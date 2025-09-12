@@ -1,0 +1,368 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -128,
+        -176
+      ],
+      "id": "3cd6aa4f-dc9d-4fb2-adc1-0fc8f30559f3",
+      "name": "Telegram Trigger",
+      "webhookId": "ca5d4485-21d5-4098-8f2e-64f2907727cc",
+      "credentials": {
+        "telegramApi": {
+          "id": "K4K4OnGCKarYmKbV",
+          "name": "sentiel guard"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = items[0].json.message.text;\nlet phishingScore = 0;\n\n// SUPER SIMPLE RULES - This is \"AI\" enough for a demo!\nconst phishingIndicators = [\n  { regex: /urgent|immediately|action required/i, weight: 0.3 },\n  { regex: /account suspended|verify your account/i, weight: 0.4 },\n  { regex: /click here|link below|http\\:\\/\\/\\S+/i, weight: 0.2 },\n  { regex: /dear (customer|user)/i, weight: 0.1 }\n];\n\nphishingIndicators.forEach(indicator => {\n  if (indicator.regex.test(text)) {\n    phishingScore += indicator.weight;\n  }\n});\n\n// Cap the score at 100%\nphishingScore = Math.min(1, phishingScore) * 100;\n\n// Add the score to the data\nitems[0].json.phishing = Math.round(phishingScore);\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -176
+      ],
+      "id": "6e2c74aa-b4c1-4222-8cd8-a4f307e27e66",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the complex response from the Hugging Face API\nconst hfResult = items[0].json.response;\n\n// 1. SAFELY get the toxicity score\nlet toxicityScore = 0; // Default score if anything fails\n\n// Check if the response exists and is an array with at least one element\nif (Array.isArray(hfResult) && hfResult.length > 0) {\n    const firstResultSet = hfResult[0];\n    // Check if the first element is also an array with at least one score\n    if (Array.isArray(firstResultSet) && firstResultSet.length > 0) {\n        // Finally, try to get the score\n        toxicityScore = Math.round(firstResultSet[0].score * 100);\n    }\n}\n// Handle the case if the model is still loading\nelse if (hfResult && hfResult.error) {\n    // If the API returns an error (like model loading), we set a default message.\n    // This prevents the workflow from crashing.\n    toxicityScore = 0; // You could set this to a special value like -1 to indicate an error\n}\n\n// 2. Get the phishing score from our previous function\nconst phishingScore = items[0].json.phishing;\n\n// 3. Create a verdict\nlet verdict = \"✅ This text looks safe.\";\nif (toxicityScore > 80 || phishingScore > 80) {\n    verdict = \"⚠️ WARNING: High risk detected!\";\n}\n\n// 4. Prepare the final output\nreturn [{\n    json: {\n        toxicity: toxicityScore,\n        phishing: phishingScore,\n        verdict: verdict,\n        originalText: items[0].json.message?.text ?? '', // Safe access with fallback\n        chatId: items[0].json.message?.chat?.id ?? null // Safe access with fallback\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -336
+      ],
+      "id": "c7847a97-3210-44d3-9562-951ec7c8a6a0",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "chatId": "6246336509",
+        "text": "=🔍 *Threat Analysis Complete*  *Message:* {{ $json.originalText }}  *Scores:* • Toxicity: {{ $json.toxicity }}% • Phishing: {{ $json.phishing }}% • Deception: {{ $json.deception }}%  *Threat Intelligence:* • Associated IP: `{{ $json.maliciousIp }}` • Action: Logged for blocking.  *Verdict:* {{ $json.verdict }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        -288
+      ],
+      "id": "d5c03a7a-fa1b-4d91-a28e-c941adea88c2",
+      "name": "Send a text message",
+      "webhookId": "c2117abe-f82a-4c8c-9cc2-66a7f74fb9bd",
+      "credentials": {
+        "telegramApi": {
+          "id": "K4K4OnGCKarYmKbV",
+          "name": "sentiel guard"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// SIMULATED Fake News Detection (Fallback because Hugging Face API is down)\nconst text = items[0].json.message.text.toLowerCase();\nlet deceptionScore = 0;\n\n// Simple rules to simulate a deception score based on common scam keywords\nif (text.includes(\"click here\") || text.includes(\"http\")) {\n    deceptionScore += 30; // Links are suspicious\n}\nif (text.includes(\"free\") || text.includes(\"win\") || text.includes(\"prize\")) {\n    deceptionScore += 30; // \"Free\" offers are often scams\n}\nif (text.includes(\"urgent\") || text.includes(\"immediately\")) {\n    deceptionScore += 40; // Urgency is a common manipulation tactic\n}\n\n// Cap the score at 100%\ndeceptionScore = Math.min(deceptionScore, 100);\n\n// Add the score to the data\nitems[0].json.deception = deceptionScore;\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -32
+      ],
+      "id": "d88cdbef-7a4b-457f-9988-ba9d5cce6aa4",
+      "name": "Parse Fake News."
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Initialize variables\nlet phishingScore = 0;\nlet toxicityScore = 0;\nlet deceptionScore = 0;\nlet originalText = '';\nlet chatId = null;\n\n// 2. Get data from all previous nodes\nitems.forEach(item => {\n  const data = item.json;\n  if (data.phishing !== undefined) phishingScore = data.phishing;\n  if (data.toxicity !== undefined) toxicityScore = data.toxicity;\n  if (data.deception !== undefined) deceptionScore = data.deception;\n  if (data.originalText !== undefined) originalText = data.originalText;\n  if (data.chatId !== undefined) chatId = data.chatId;\n  // Get text/chatId from raw message if needed\n  if (data.message !== undefined) {\n    originalText = data.message.text || originalText;\n    chatId = data.message.chat?.id || chatId;\n  }\n});\n\n// 3. Calculate overall threat\nconst isThreat = phishingScore > 80 || toxicityScore > 80 || deceptionScore > 75;\n\n// 4. SIMULATE IP DETECTION (FEATURE #4)\nlet maliciousIp = \"No IP found\";\nif (isThreat) {\n  maliciousIp = \"185.220.101.134\"; // Mock IP\n}\n\n// 5. Prepare final output\nreturn [{\n  json: {\n    phishing: phishingScore,\n    toxicity: toxicityScore,\n    deception: deceptionScore,\n    originalText: originalText,\n    chatId:$input.first().json.chatId,\n    isThreat: isThreat,\n    maliciousIp: maliciousIp, // FEATURE #4\n    verdict: isThreat ? \"⚠️ HIGH RISK THREAT DETECTED\" : \"✅ Content appears safe.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        -176
+      ],
+      "id": "9b359b81-4869-4d0a-9fb2-7b360415191a",
+      "name": "Merge & Simulate IP."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh/sentinel_guard_alerts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "Sentinel Guard Alert"
+            },
+            {
+              "name": "Priority",
+              "value": "high"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "=🚨 Threat detected from IP {{ $json.maliciousIp }}. Message: \"{{ $json.originalText }}\"",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "proxy": ""
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        784,
+        -176
+      ],
+      "id": "faccbccc-674c-40d7-b97d-b3b1c58cf392",
+      "name": "Simulate IP Alert"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1ApnMMHoJXzWbDtUpoC3dkGoAp97DzJ01pey1lqRCsF0",
+          "mode": "list",
+          "cachedResultName": "Simulate IP Block",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ApnMMHoJXzWbDtUpoC3dkGoAp97DzJ01pey1lqRCsF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Blocklist",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ApnMMHoJXzWbDtUpoC3dkGoAp97DzJ01pey1lqRCsF0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "isThreat"
+          ],
+          "schema": [
+            {
+              "id": "phishing",
+              "displayName": "phishing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "toxicity",
+              "displayName": "toxicity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "deception",
+              "displayName": "deception",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "originalText",
+              "displayName": "originalText",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "chatId",
+              "displayName": "chatId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "isThreat",
+              "displayName": "isThreat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "maliciousIp",
+              "displayName": "maliciousIp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "verdict",
+              "displayName": "verdict",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        656,
+        -176
+      ],
+      "id": "4aba5a16-bffc-41bb-b7a2-c1911d84c4b4",
+      "name": "Simulate IP Block",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AOhRkSs3PxUVpfTG",
+          "name": "Google Sheets account 2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Fake News.",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge & Simulate IP.",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Merge & Simulate IP.",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Fake News.": {
+      "main": [
+        [
+          {
+            "node": "Merge & Simulate IP.",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Simulate IP.": {
+      "main": [
+        [
+          {
+            "node": "Simulate IP Block",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulate IP Alert": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulate IP Block": {
+      "main": [
+        [
+          {
+            "node": "Simulate IP Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7cfe4fd02e91336d786ea7d3a84837cf247566f13359508fefd95313e58f113a"
+  }
+}
