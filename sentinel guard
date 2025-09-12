@@ -1,0 +1,8 @@
+sentinel-guard/
+├── n8n-workflow.json
+├── dashboard.html
+├── scripts/
+│   └── phishing-rules.js
+├── docs/
+│   └── DEMO_INSTRUCTIONS.md
+└── README.md
