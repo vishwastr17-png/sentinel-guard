@@ -10,7 +10,7 @@
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.2,
       "position": [
-        -128,
+        -112,
         -176
       ],
       "id": "3cd6aa4f-dc9d-4fb2-adc1-0fc8f30559f3",
@@ -25,41 +25,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const text = items[0].json.message.text;\nlet phishingScore = 0;\n\n// SUPER SIMPLE RULES - This is \"AI\" enough for a demo!\nconst phishingIndicators = [\n  { regex: /urgent|immediately|action required/i, weight: 0.3 },\n  { regex: /account suspended|verify your account/i, weight: 0.4 },\n  { regex: /click here|link below|http\\:\\/\\/\\S+/i, weight: 0.2 },\n  { regex: /dear (customer|user)/i, weight: 0.1 }\n];\n\nphishingIndicators.forEach(indicator => {\n  if (indicator.regex.test(text)) {\n    phishingScore += indicator.weight;\n  }\n});\n\n// Cap the score at 100%\nphishingScore = Math.min(1, phishingScore) * 100;\n\n// Add the score to the data\nitems[0].json.phishing = Math.round(phishingScore);\nreturn items;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        192,
-        -176
-      ],
-      "id": "6e2c74aa-b4c1-4222-8cd8-a4f307e27e66",
-      "name": "Code"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Get the complex response from the Hugging Face API\nconst hfResult = items[0].json.response;\n\n// 1. SAFELY get the toxicity score\nlet toxicityScore = 0; // Default score if anything fails\n\n// Check if the response exists and is an array with at least one element\nif (Array.isArray(hfResult) && hfResult.length > 0) {\n    const firstResultSet = hfResult[0];\n    // Check if the first element is also an array with at least one score\n    if (Array.isArray(firstResultSet) && firstResultSet.length > 0) {\n        // Finally, try to get the score\n        toxicityScore = Math.round(firstResultSet[0].score * 100);\n    }\n}\n// Handle the case if the model is still loading\nelse if (hfResult && hfResult.error) {\n    // If the API returns an error (like model loading), we set a default message.\n    // This prevents the workflow from crashing.\n    toxicityScore = 0; // You could set this to a special value like -1 to indicate an error\n}\n\n// 2. Get the phishing score from our previous function\nconst phishingScore = items[0].json.phishing;\n\n// 3. Create a verdict\nlet verdict = \"✅ This text looks safe.\";\nif (toxicityScore > 80 || phishingScore > 80) {\n    verdict = \"⚠️ WARNING: High risk detected!\";\n}\n\n// 4. Prepare the final output\nreturn [{\n    json: {\n        toxicity: toxicityScore,\n        phishing: phishingScore,\n        verdict: verdict,\n        originalText: items[0].json.message?.text ?? '', // Safe access with fallback\n        chatId: items[0].json.message?.chat?.id ?? null // Safe access with fallback\n    }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        320,
-        -336
-      ],
-      "id": "c7847a97-3210-44d3-9562-951ec7c8a6a0",
-      "name": "Code1"
-    },
-    {
-      "parameters": {
         "chatId": "6246336509",
-        "text": "=🔍 *Threat Analysis Complete*  *Message:* {{ $json.originalText }}  *Scores:* • Toxicity: {{ $json.toxicity }}% • Phishing: {{ $json.phishing }}% • Deception: {{ $json.deception }}%  *Threat Intelligence:* • Associated IP: `{{ $json.maliciousIp }}` • Action: Logged for blocking.  *Verdict:* {{ $json.verdict }}",
+        "text": "==🔍 *Threat Analysis Complete*\n\n*Message:* {{ $json.originalText }}\n\n*Scores:*\n• Toxicity: {{ $json.toxicity }}%\n• Phishing: {{ $json.phishing }}%\n• Deception: {{ $json.deception }}%\n   _Reason: {{ $json.deceptionExplanation }}_\n\n*Threat Intelligence:*\n• Associated IP: `{{ $json.maliciousIp }}`\n• Action: Logged for blocking.\n\n*Verdict:* {{ $json.verdict }}",
         "additionalFields": {}
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        960,
-        -288
+        1568,
+        -320
       ],
       "id": "d5c03a7a-fa1b-4d91-a28e-c941adea88c2",
       "name": "Send a text message",
@@ -73,29 +47,31 @@
     },
     {
       "parameters": {
-        "jsCode": "// SIMULATED Fake News Detection (Fallback because Hugging Face API is down)\nconst text = items[0].json.message.text.toLowerCase();\nlet deceptionScore = 0;\n\n// Simple rules to simulate a deception score based on common scam keywords\nif (text.includes(\"click here\") || text.includes(\"http\")) {\n    deceptionScore += 30; // Links are suspicious\n}\nif (text.includes(\"free\") || text.includes(\"win\") || text.includes(\"prize\")) {\n    deceptionScore += 30; // \"Free\" offers are often scams\n}\nif (text.includes(\"urgent\") || text.includes(\"immediately\")) {\n    deceptionScore += 40; // Urgency is a common manipulation tactic\n}\n\n// Cap the score at 100%\ndeceptionScore = Math.min(deceptionScore, 100);\n\n// Add the score to the data\nitems[0].json.deception = deceptionScore;\nreturn items;"
+        "jsCode": "// Get the input data\nconst inputData = $input.first().json;\n\n// Default values\nlet deceptionScore = 0;\nlet explanation = \"Analysis failed - no data received\";\n\n// Check if we have the debug data structure\nif (inputData.responseText && inputData.responseText !== \"NO RESPONSE\") {\n    const responseText = inputData.responseText;\n    \n    // Try to parse JSON response from Gemini\n    try {\n        const parsedResult = JSON.parse(responseText);\n        deceptionScore = parsedResult.deceptionScore || 0;\n        explanation = parsedResult.explanation || \"No explanation provided\";\n    } catch (error) {\n        // If parsing fails, use simulation\n        deceptionScore = 75;\n        explanation = \"AI analysis failed, using simulation\";\n    }\n} else {\n    // Fallback simulation based on common patterns\n    const text = inputData.rawResponse?.message?.text || \"\";\n    \n    if (text.includes(\"http\") || text.includes(\"bit.ly\") || text.includes(\"click\")) {\n        deceptionScore = 85;\n        explanation = \"Suspicious links detected\";\n    } else if (text.includes(\"free\") || text.includes(\"money\") || text.includes(\"win\")) {\n        deceptionScore = 90;\n        explanation = \"Financial scam detected\";\n    } else if (text.includes(\"idiot\") || text.includes(\"stupid\")) {\n        deceptionScore = 60;\n        explanation = \"Insulting language detected\";\n    } else {\n        deceptionScore = 20;\n        explanation = \"Normal conversation\";\n    }\n}\n\nreturn [{\n  json: {\n    deception: deceptionScore,\n    deceptionExplanation: explanation\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        240,
-        -32
+        608,
+        -96
       ],
       "id": "d88cdbef-7a4b-457f-9988-ba9d5cce6aa4",
       "name": "Parse Fake News."
     },
     {
       "parameters": {
-        "jsCode": "// 1. Initialize variables\nlet phishingScore = 0;\nlet toxicityScore = 0;\nlet deceptionScore = 0;\nlet originalText = '';\nlet chatId = null;\n\n// 2. Get data from all previous nodes\nitems.forEach(item => {\n  const data = item.json;\n  if (data.phishing !== undefined) phishingScore = data.phishing;\n  if (data.toxicity !== undefined) toxicityScore = data.toxicity;\n  if (data.deception !== undefined) deceptionScore = data.deception;\n  if (data.originalText !== undefined) originalText = data.originalText;\n  if (data.chatId !== undefined) chatId = data.chatId;\n  // Get text/chatId from raw message if needed\n  if (data.message !== undefined) {\n    originalText = data.message.text || originalText;\n    chatId = data.message.chat?.id || chatId;\n  }\n});\n\n// 3. Calculate overall threat\nconst isThreat = phishingScore > 80 || toxicityScore > 80 || deceptionScore > 75;\n\n// 4. SIMULATE IP DETECTION (FEATURE #4)\nlet maliciousIp = \"No IP found\";\nif (isThreat) {\n  maliciousIp = \"185.220.101.134\"; // Mock IP\n}\n\n// 5. Prepare final output\nreturn [{\n  json: {\n    phishing: phishingScore,\n    toxicity: toxicityScore,\n    deception: deceptionScore,\n    originalText: originalText,\n    chatId:$input.first().json.chatId,\n    isThreat: isThreat,\n    maliciousIp: maliciousIp, // FEATURE #4\n    verdict: isThreat ? \"⚠️ HIGH RISK THREAT DETECTED\" : \"✅ Content appears safe.\"\n  }\n}];"
+        "jsCode": "// 1. Initialize variables\nlet phishingScore = 0;\nlet toxicityScore = 0;\nlet deceptionScore = 0;\nlet originalText = '';\nlet chatId = null;\nlet deceptionExplanation = '';\n\n// 2. Get data from all previous nodes\nitems.forEach(item => {\n  const data = item.json;\n  if (data.phishing !== undefined) phishingScore = data.phishing;\n  if (data.toxicity !== undefined) toxicityScore = data.toxicity;\n  if (data.deception !== undefined) deceptionScore = data.deception;\n  if (data.deceptionExplanation !== undefined) deceptionExplanation = data.deceptionExplanation;\n  if (data.originalText !== undefined) originalText = data.originalText;\n  if (data.chatId !== undefined) chatId = data.chatId;\n  \n  // Get text/chatId from raw message if needed\n  if (data.message !== undefined) {\n    originalText = data.message.text || originalText;\n    chatId = data.message.chat?.id || chatId;\n  }\n});\n\n// 3. Calculate overall threat (more sensitive thresholds)\nconst isThreat = phishingScore > 60 || toxicityScore > 70 || deceptionScore > 65;\n\n// 4. SIMULATE IP DETECTION\nlet maliciousIp = \"No IP found\";\nif (isThreat) {\n  maliciousIp = \"185.220.101.134\"; // Mock IP\n}\n\n// 5. Prepare final output\nreturn [{\n  json: {\n    phishing: phishingScore,\n    toxicity: toxicityScore,\n    deception: deceptionScore,\n    deceptionExplanation: deceptionExplanation,\n    originalText: originalText,\n    chatId: chatId,\n    isThreat: isThreat,\n    maliciousIp: maliciousIp,\n    verdict: isThreat ? \"⚠️ HIGH RISK THREAT DETECTED\" : \"✅ Content appears safe.\"\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        496,
-        -176
+        928,
+        -320
       ],
       "id": "9b359b81-4869-4d0a-9fb2-7b360415191a",
-      "name": "Merge & Simulate IP."
+      "name": "Merge & Simulate IP.",
+      "executeOnce": true,
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -134,8 +110,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        784,
-        -176
+        1392,
+        -112
       ],
       "id": "faccbccc-674c-40d7-b97d-b3b1c58cf392",
       "name": "Simulate IP Alert"
@@ -253,8 +229,8 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        656,
-        -176
+        1152,
+        -112
       ],
       "id": "4aba5a16-bffc-41bb-b7a2-c1911d84c4b4",
       "name": "Simulate IP Block",
@@ -264,6 +240,82 @@
           "name": "Google Sheets account 2"
         }
       }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-1.5-flash-latest",
+          "mode": "list",
+          "cachedResultName": "models/gemini-1.5-flash-latest"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Analyze this text for misinformation or fake news. Provide ONLY a JSON response with this exact format: {\"deceptionScore\": number between 0-100, \"explanation\": \"brief reason\"}. Text: \"{{ $json.message.text }}\""
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {
+          "maxOutputTokens": 100,
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        64,
+        -96
+      ],
+      "id": "52183311-0648-478a-a12e-8d46143df8c6",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Q55WMa7qWwphK1Ow",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phishing Detection Algorithm\nconst text = $input.first().json.message.text;\nlet phishingScore = 0;\n\n// Phishing indicators with weights\nconst phishingIndicators = [\n  { regex: /urgent|immediately|action required|right now/i, weight: 0.3 },\n  { regex: /account suspended|verify your account|login required|security alert/i, weight: 0.4 },\n  { regex: /click here|link below|http\\:\\/\\/|https\\:\\/\\/|bit\\.ly|tinyurl|shorturl/i, weight: 0.4 },\n  { regex: /dear (customer|user|valued member|account holder)/i, weight: 0.2 },\n  { regex: /free|win|prize|reward|bonus|gift card/i, weight: 0.3 },\n  { regex: /password|credentials|login info|account details/i, weight: 0.4 },\n  { regex: /\\$\\$|\\$\\d+|money transfer|payment required/i, weight: 0.3 },\n  { regex: /limited time|offer expires|only today|last chance/i, weight: 0.2 }\n];\n\n// Calculate phishing score based on detected patterns\nphishingIndicators.forEach(indicator => {\n  if (indicator.regex.test(text)) {\n    phishingScore += indicator.weight;\n  }\n});\n\n// Additional checks\nconst textLength = text.length;\nconst linkCount = (text.match(/http\\:\\/\\/|https\\:\\/\\/|www\\./gi) || []).length;\n\n// Penalty for multiple links\nif (linkCount > 1) {\n  phishingScore += 0.2 * (linkCount - 1);\n}\n\n// Cap the score at 100%\nphishingScore = Math.min(1, phishingScore) * 100;\n\n// Add the score and analysis to the data\nreturn [{\n  json: {\n    ...$input.first().json, // Keep all original data\n    phishing: Math.round(phishingScore),\n    phishingIndicators: phishingIndicators\n      .filter(indicator => indicator.regex.test(text))\n      .map(indicator => indicator.regex.source),\n    linkCount: linkCount\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -320
+      ],
+      "id": "b1a2baae-34fc-4aca-ad30-ab1b3746240f",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    rawResponse: $input.first().json,\n    hasResponse: !!$input.first().json.response,\n    responseText: $input.first().json.response || \"NO RESPONSE\",\n    error: $input.first().json.error || \"NO ERROR\",\n    allKeys: Object.keys($input.first().json)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -96
+      ],
+      "id": "d21cc0d2-d8d0-4c2f-b87e-9e7e35f4f4cb",
+      "name": "Debug Gemini Output"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Toxicity Detection\nconst text = $input.first().json.message.text.toLowerCase();\nlet toxicityScore = 0;\n\n// Toxic word detection\nconst toxicWords = [\"idiot\", \"stupid\", \"fool\", \"hate\", \"kill\", \"die\", \"ugly\", \"worthless\"];\ntoxicWords.forEach(word => {\n  if (text.includes(word)) {\n    toxicityScore = Math.max(toxicityScore, 80);\n  }\n});\n\n// Personal attacks\nif (text.includes(\"you're\") && toxicityScore > 0) {\n  toxicityScore += 10;\n}\n\n// Cap at 100%\ntoxicityScore = Math.min(100, toxicityScore);\n\nreturn [{\n  json: {\n    toxicity: toxicityScore,\n    originalText: $input.first().json.message.text,\n    chatId: $input.first().json.message.chat.id\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -592
+      ],
+      "id": "bcf09be4-0bf2-41f7-85d4-91249a610200",
+      "name": "Code2"
     }
   ],
   "connections": {
@@ -271,7 +323,7 @@
       "main": [
         [
           {
-            "node": "Parse Fake News.",
+            "node": "Message a model",
             "type": "main",
             "index": 0
           },
@@ -279,31 +331,9 @@
             "node": "Code",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Code": {
-      "main": [
-        [
-          {
-            "node": "Code1",
-            "type": "main",
-            "index": 0
           },
           {
-            "node": "Merge & Simulate IP.",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code1": {
-      "main": [
-        [
-          {
-            "node": "Merge & Simulate IP.",
+            "node": "Code2",
             "type": "main",
             "index": 0
           }
@@ -339,13 +369,7 @@
     },
     "Simulate IP Alert": {
       "main": [
-        [
-          {
-            "node": "Send a text message",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Simulate IP Block": {
@@ -353,6 +377,50 @@
         [
           {
             "node": "Simulate IP Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Debug Gemini Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Merge & Simulate IP.",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug Gemini Output": {
+      "main": [
+        [
+          {
+            "node": "Parse Fake News.",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Merge & Simulate IP.",
             "type": "main",
             "index": 0
           }
